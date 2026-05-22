@@ -90,12 +90,12 @@ class RecurrenceEntry extends Entry
 
         $details = [];
 
-        if ($data->frequency) {
-            $details['Frequency'] = ucfirst(strtolower($data->frequency));
+        if ($data->interval && $data->interval > 1) {
+            $details['Interval'] = $data->formatIntervalLabel();
         }
 
-        if ($data->interval && $data->interval > 1) {
-            $details['Interval'] = "Every {$data->interval}";
+        if ($data->frequency) {
+            $details['Frequency'] = $data->formatFrequencyLabel();
         }
 
         if ($data->startDate) {

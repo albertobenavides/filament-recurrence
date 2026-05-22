@@ -342,6 +342,49 @@ class RecurrenceData implements Arrayable
         ]);
     }
 
+    public function normalizedInterval(): int
+    {
+        return max(1, (int) ($this->interval ?? 1));
+    }
+
+    public function formatIntervalLabel(): ?string
+    {
+        $interval = $this->normalizedInterval();
+
+        if ($interval <= 1) {
+            return null;
+        }
+
+        return "Every {$interval}";
+    }
+
+    public function formatFrequencyLabel(): string
+    {
+        $frequency = strtoupper((string) $this->frequency);
+        $interval = $this->normalizedInterval();
+        $configured = config('filament-recurrence.frequencies', []);
+
+        if ($interval === 1) {
+            return $configured[$frequency] ?? ucfirst(strtolower($frequency));
+        }
+
+        $unitKeys = [
+            'DAILY' => 'daily',
+            'WEEKLY' => 'weekly',
+            'MONTHLY' => 'monthly',
+            'YEARLY' => 'yearly',
+        ];
+
+        $units = __('filament-recurrence::recurrence.frequency_units');
+        $unitKey = $unitKeys[$frequency] ?? null;
+
+        if ($unitKey && is_array($units) && isset($units[$unitKey])) {
+            return ucfirst(trans_choice($units[$unitKey], $interval));
+        }
+
+        return $configured[$frequency] ?? ucfirst(strtolower($frequency));
+    }
+
     public function toHumanReadable(): string
     {
         if (! $this->frequency) {
