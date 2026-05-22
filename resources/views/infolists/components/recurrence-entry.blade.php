@@ -11,7 +11,7 @@
 
     @if ($humanReadable)
         <div class="space-y-4">
-            <div class="rounded-lg bg-gray-50 dark:bg-gray-800">
+            <div class="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800">
                 <div class="text-base font-semibold text-gray-950 dark:text-white">
                     {{ $humanReadable }}
                 </div>
@@ -45,7 +45,7 @@
                     </div>
                     <div class="space-y-2">
                         @foreach ($nextOccurrences as $index => $occurrence)
-                            <div class="flex items-center gap-2 rounded-lg bg-gray-50 dark:bg-gray-800 py-2">
+                            <div class="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800">
                                 <div class="flex h-6 w-6 items-center justify-center rounded-full bg-primary-500 text-xs font-bold text-white">
                                     {{ $index + 1 }}
                                 </div>
