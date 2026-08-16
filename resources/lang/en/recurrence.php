@@ -8,6 +8,7 @@ return [
             'start_date_time' => 'Start Date & Time',
             'repeats' => 'Repeats',
             'fused_repeats' => 'Repeat every',
+            'select_frequency' => 'Select a frequency',
             'timezone' => 'Timezone',
             'interval' => 'Interval',
             'repeat_on' => 'Repeat on',
