@@ -4,6 +4,7 @@ namespace Andreia\FilamentRecurrence\Forms\Components;
 
 use Andreia\FilamentRecurrence\Data\RecurrenceData;
 use Andreia\FilamentRecurrence\Support\OccurrenceCalendar;
+use Closure;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\DateTimePicker;
@@ -11,27 +12,48 @@ use Filament\Forms\Components\Field;
 use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Fieldset;
-use Tapp\FilamentTimezoneField\Forms\Components\TimezoneSelect;
 use Filament\Schemas\Components\FusedGroup;
 use Filament\Schemas\Components\Group;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Components\View as ViewComponent;
+use InvalidArgumentException;
+use Tapp\FilamentTimezoneField\Forms\Components\TimezoneSelect;
 
 class RecurrenceField extends Field
 {
+    /**
+     * @var array<int, string>
+     */
+    protected const NULLABLE_FIELDS = [
+        'start_date',
+        'frequency',
+        'timezone',
+    ];
+
     protected string $view = 'filament-recurrence::forms.components.recurrence-field';
 
     protected bool $showStartDate = true;
+
     protected bool $showEndOptions = true;
+
     protected bool $showAdvancedOptions = false;
+
     protected bool $showPreview = true;
+
     protected int $previewOccurrencesLimit = 5;
+
     protected bool $useDateTime = false;
 
     protected bool $showTimezone = true;
+
+    /**
+     * @var array<int, string>
+     */
+    protected array $nullableRecurrenceFields = [];
+
+    protected bool|Closure $isRecurrenceNullable = false;
 
     public static function getDefaultName(): ?string
     {
@@ -51,8 +73,13 @@ class RecurrenceField extends Field
 
             $merged = RecurrenceData::mergeFormUiState($state);
 
-            if (! $component->showTimezone) {
+            if (
+                ! $component->showTimezone
+                || (! $component->isRecurrenceFieldNullable('timezone') && blank($state['timezone'] ?? null))
+            ) {
                 $merged['timezone'] = config('filament-recurrence.timezone', 'UTC');
+            } elseif (array_key_exists('timezone', $state) && blank($state['timezone'])) {
+                $merged['timezone'] = null;
             }
 
             if ($merged == $state) {
@@ -62,19 +89,9 @@ class RecurrenceField extends Field
             $component->state($merged);
         });
 
-        $this->dehydrateStateUsing(function (mixed $state): mixed {
-            if (is_array($state)) {
-                if (! $this->showTimezone) {
-                    unset($state['timezone']);
-                }
-
-                $data = RecurrenceData::fromArray($state);
-
-                return $data->toArray();
-            }
-
-            return $state;
-        });
+        $this->dehydrateStateUsing(
+            fn (mixed $state): mixed => $this->dehydrateRecurrenceState($state)
+        );
 
         $this->schema(fn (): array => $this->buildRecurrenceSchema());
     }
@@ -82,18 +99,21 @@ class RecurrenceField extends Field
     public function showStartDate(bool $condition = true): static
     {
         $this->showStartDate = $condition;
+
         return $this;
     }
 
     public function showEndOptions(bool $condition = true): static
     {
         $this->showEndOptions = $condition;
+
         return $this;
     }
 
     public function showAdvancedOptions(bool $condition = true): static
     {
         $this->showAdvancedOptions = $condition;
+
         return $this;
     }
 
@@ -114,6 +134,7 @@ class RecurrenceField extends Field
     public function useDateTime(bool $condition = true): static
     {
         $this->useDateTime = $condition;
+
         return $this;
     }
 
@@ -122,6 +143,108 @@ class RecurrenceField extends Field
         $this->showTimezone = $condition;
 
         return $this;
+    }
+
+    /**
+     * @param  bool | Closure | array<int, string> | string  $condition
+     * @param  array<int, string> | string | null  $fields
+     */
+    public function nullable(
+        bool|Closure|array|string $condition = true,
+        array|string|null $fields = null,
+    ): static {
+        if (is_array($condition) || is_string($condition)) {
+            if ($fields !== null) {
+                throw new InvalidArgumentException('Nullable recurrence fields cannot be passed twice.');
+            }
+
+            $fields = $condition;
+            $condition = true;
+        }
+
+        $fields ??= self::NULLABLE_FIELDS;
+        $fields = is_string($fields) ? [$fields] : $fields;
+
+        $invalidFields = array_diff($fields, self::NULLABLE_FIELDS);
+
+        if ($invalidFields !== []) {
+            throw new InvalidArgumentException(
+                'Invalid nullable recurrence field(s): '.implode(', ', $invalidFields).'.'
+            );
+        }
+
+        $this->nullableRecurrenceFields = array_values(array_unique($fields));
+        $this->isRecurrenceNullable = $condition;
+
+        parent::nullable($condition);
+
+        return $this;
+    }
+
+    protected function isRecurrenceFieldNullable(string $field): bool
+    {
+        return in_array($field, $this->nullableRecurrenceFields, true)
+            && (bool) $this->evaluate($this->isRecurrenceNullable);
+    }
+
+    protected function recurrenceFieldDefault(string $field, mixed $default): mixed
+    {
+        return $this->isRecurrenceFieldNullable($field) ? null : $default;
+    }
+
+    /**
+     * When start_date is nullable and empty, disable frequency selection to avoid
+     * building recurrence rules / previews without an anchor date.
+     */
+    protected function isFrequencyDisabledUntilStartDate(mixed $startDate): bool
+    {
+        if (! $this->showStartDate) {
+            return false;
+        }
+
+        if (! $this->isRecurrenceFieldNullable('start_date')) {
+            return false;
+        }
+
+        return blank($startDate);
+    }
+
+    protected function clearFrequencyDependentState(Set $set): void
+    {
+        $set('frequency', null);
+        $set('by_day', null);
+        $set('by_month_day', null);
+        $set('by_month', null);
+        $set('by_set_pos', null);
+    }
+
+    protected function dehydrateRecurrenceState(mixed $state): mixed
+    {
+        if (! is_array($state)) {
+            return $state;
+        }
+
+        if (
+            $this->isRecurrenceFieldNullable('frequency')
+            && blank($state['frequency'] ?? null)
+        ) {
+            return null;
+        }
+
+        $hasNullableEmptyTimezone = $this->isRecurrenceFieldNullable('timezone')
+            && blank($state['timezone'] ?? null);
+
+        if (! $this->showTimezone) {
+            unset($state['timezone']);
+        }
+
+        $dehydratedState = RecurrenceData::fromArray($state)->toArray();
+
+        if ($hasNullableEmptyTimezone) {
+            $dehydratedState['timezone'] = null;
+        }
+
+        return $dehydratedState;
     }
 
     protected function buildRecurrenceSchema(): array
@@ -136,19 +259,26 @@ class RecurrenceField extends Field
                 ->minValue(1)
                 ->maxValue(999)
                 ->live()
+                ->disabled(fn (Get $get): bool => $this->isFrequencyDisabledUntilStartDate($get('start_date')))
                 ->visible(fn (Get $get) => filled($get('frequency'))),
             Select::make('frequency')
                 ->hiddenLabel()
+                ->placeholder(__('filament-recurrence::recurrence.fields.recurrence.select_frequency'))
                 ->options(fn (Get $get): array => self::getFrequencyOptionsForInterval($get))
-                ->required()
-                ->default('WEEKLY')
+                ->required(fn (): bool => ! $this->isRecurrenceFieldNullable('frequency'))
+                ->default(fn (): mixed => $this->recurrenceFieldDefault('frequency', 'WEEKLY'))
+                ->columnSpan(fn (Get $get): int|string => filled($get('frequency')) ? 1 : 'full')
+                ->disabled(fn (Get $get): bool => $this->isFrequencyDisabledUntilStartDate($get('start_date')))
                 ->live()
-                ->afterStateUpdated(function (Set $set, ?string $state) {
-                    // Reset dependent fields when frequency changes
+                ->afterStateUpdated(function (Set $set, Get $get, ?string $state): void {
                     $set('by_day', null);
                     $set('by_month_day', null);
                     $set('by_month', null);
                     $set('by_set_pos', null);
+
+                    if (filled($state) && blank($get('interval'))) {
+                        $set('interval', 1);
+                    }
                 }),
         ])
             ->label(__('filament-recurrence::recurrence.fields.recurrence.fused_repeats'))
@@ -157,9 +287,13 @@ class RecurrenceField extends Field
         $timezoneSelect = $this->showTimezone
             ? TimezoneSelect::make('timezone')
                 ->label(__('filament-recurrence::recurrence.fields.recurrence.timezone'))
-                ->default(config('filament-recurrence.timezone', 'UTC'))
+                ->default(fn (): mixed => $this->recurrenceFieldDefault(
+                    'timezone',
+                    config('filament-recurrence.timezone', 'UTC'),
+                ))
                 ->searchable()
-                ->required(fn (Get $get) => filled($get('frequency')))
+                ->required(fn (Get $get): bool => filled($get('frequency'))
+                    && ! $this->isRecurrenceFieldNullable('timezone'))
                 ->visible(fn (Get $get) => filled($get('frequency')))
                 ->columnSpanFull()
             : null;
@@ -168,14 +302,24 @@ class RecurrenceField extends Field
             $startField = $this->useDateTime
                 ? DateTimePicker::make('start_date')
                     ->label('Start Date & Time')
-                    ->required()
-                    ->default(now())
+                    ->required(fn (): bool => ! $this->isRecurrenceFieldNullable('start_date'))
+                    ->default(fn (): mixed => $this->recurrenceFieldDefault('start_date', now()))
                     ->live()
+                    ->afterStateUpdated(function (Set $set, mixed $state): void {
+                        if (blank($state) && $this->isRecurrenceFieldNullable('start_date')) {
+                            $this->clearFrequencyDependentState($set);
+                        }
+                    })
                 : DatePicker::make('start_date')
                     ->label('Start Date')
-                    ->required()
-                    ->default(now())
-                    ->live();
+                    ->required(fn (): bool => ! $this->isRecurrenceFieldNullable('start_date'))
+                    ->default(fn (): mixed => $this->recurrenceFieldDefault('start_date', now()))
+                    ->live()
+                    ->afterStateUpdated(function (Set $set, mixed $state): void {
+                        if (blank($state) && $this->isRecurrenceFieldNullable('start_date')) {
+                            $this->clearFrequencyDependentState($set);
+                        }
+                    });
 
             $topRow = [$startField, $fusedRepeat];
             if ($timezoneSelect !== null) {
@@ -263,7 +407,7 @@ class RecurrenceField extends Field
                     ->visible(fn (Get $get) => filled($get('by_set_pos'))),
             ])->visible(fn (Get $get) => $get('monthly_type') === 'weekday'),
         ])
-            ->visible(fn(Get $get) => $get('frequency') === 'MONTHLY');
+            ->visible(fn (Get $get) => $get('frequency') === 'MONTHLY');
 
         // Month selection for yearly frequency
         $formComponents[] = CheckboxList::make('by_month')
@@ -283,7 +427,7 @@ class RecurrenceField extends Field
                 '12' => 'December',
             ])
             ->columns(4)
-            ->visible(fn(Get $get) => $get('frequency') === 'YEARLY');
+            ->visible(fn (Get $get) => $get('frequency') === 'YEARLY');
 
         // End options
         if ($this->showEndOptions) {
@@ -332,10 +476,10 @@ class RecurrenceField extends Field
                         ->numeric()
                         ->minValue(1)
                         ->maxValue(999)
-                        ->visible(fn(Get $get) => $get('end_type') === 'count')
+                        ->visible(fn (Get $get) => $get('end_type') === 'count')
                         ->live(),
                 ])
-                ->visible(fn(Get $get) => filled($get('frequency')));
+                ->visible(fn (Get $get) => filled($get('frequency')));
         }
 
         if (! $this->showPreview) {

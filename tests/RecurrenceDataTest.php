@@ -111,7 +111,7 @@ test('human readable preview includes start end dates time and occurrence count 
 
 test('can get occurrences', function () {
     $startDate = Carbon::parse('2024-01-01 09:00:00');
-    
+
     $data = new RecurrenceData(
         frequency: 'DAILY',
         interval: 1,
@@ -128,7 +128,7 @@ test('can get occurrences', function () {
 
 test('weekly recurrence on specific days', function () {
     $startDate = Carbon::parse('2024-01-01'); // Monday
-    
+
     $data = new RecurrenceData(
         frequency: 'WEEKLY',
         interval: 1,
@@ -140,7 +140,7 @@ test('weekly recurrence on specific days', function () {
     $occurrences = $data->getOccurrences(9);
 
     expect($occurrences)->toHaveCount(9);
-    
+
     // First three should be Mon, Wed, Fri
     expect($occurrences[0]->dayOfWeek)->toBe(Carbon::MONDAY)
         ->and($occurrences[1]->dayOfWeek)->toBe(Carbon::WEDNESDAY)
@@ -213,7 +213,7 @@ test('from rule keeps legacy monthly plain BYDAY with BYSETPOS', function () {
 
 test('monthly recurrence on specific day of month', function () {
     $startDate = Carbon::parse('2024-01-15');
-    
+
     $data = new RecurrenceData(
         frequency: 'MONTHLY',
         interval: 1,
@@ -232,7 +232,7 @@ test('monthly recurrence on specific day of month', function () {
 
 test('yearly recurrence', function () {
     $startDate = Carbon::parse('2024-06-15');
-    
+
     $data = new RecurrenceData(
         frequency: 'YEARLY',
         interval: 1,
@@ -253,7 +253,7 @@ test('yearly recurrence', function () {
 test('recurrence with end date', function () {
     $startDate = Carbon::parse('2024-01-01');
     $endDate = Carbon::parse('2024-01-10');
-    
+
     $data = new RecurrenceData(
         frequency: 'DAILY',
         interval: 1,
@@ -327,7 +327,7 @@ test('mergeFormUiState defaults timezone from config when missing', function () 
     ])['timezone'])->toBe('Europe/Lisbon');
 });
 
-test('from array normalizes empty timezone string to configured default on dto', function () {
+test('from array preserves an explicitly empty timezone as null', function () {
     config(['filament-recurrence.timezone' => 'America/Sao_Paulo']);
 
     $data = RecurrenceData::fromArray([
@@ -337,7 +337,7 @@ test('from array normalizes empty timezone string to configured default on dto',
         'timezone' => '',
     ]);
 
-    expect($data->timezone)->toBe('America/Sao_Paulo');
+    expect($data->timezone)->toBeNull();
 });
 
 test('mergeFormUiState preserves explicit end_type', function () {

@@ -284,7 +284,11 @@ RecurrenceField::make('recurrence')
     ->previewOccurrencesLimit(5) // How many “next occurrences” rows to show in the preview; default is 5
     ->useDateTime(true) // Use datetime picker instead of date picker
     ->showTimezone(true) // Show/hide the per-record timezone select (default true); when false, config timezone is always used
+    ->nullable() // Allow start date, frequency, and timezone to be empty; empty recurrence is stored as null. When start date is empty, “Repeat every” stays disabled until a start date is set.
     ->showAdvancedOptions(true) // Show advanced recurrence options
+
+// Make only selected recurrence fields nullable:
+RecurrenceField::make('recurrence')->nullable(fields: ['timezone']);
 
 // Hide the preview (full-width form only):
 RecurrenceField::make('recurrence')->showPreview(false);

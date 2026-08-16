@@ -20,7 +20,6 @@ class RecurrenceData implements Arrayable
         public ?int $bySetPos = null,
         public ?string $timezone = null,
     ) {
-        $this->timezone ??= config('filament-recurrence.timezone', 'UTC');
     }
 
     public static function fromArray(array $data): self
@@ -35,7 +34,9 @@ class RecurrenceData implements Arrayable
             byMonthDay: $data['by_month_day'] ?? null,
             byMonth: $data['by_month'] ?? null,
             bySetPos: self::normalizeNullableInt($data['by_set_pos'] ?? null),
-            timezone: self::normalizeNullableTimezone($data['timezone'] ?? null),
+            timezone: array_key_exists('timezone', $data)
+                ? self::normalizeNullableTimezone($data['timezone'])
+                : config('filament-recurrence.timezone', 'UTC'),
         );
     }
 
@@ -85,7 +86,7 @@ class RecurrenceData implements Arrayable
             $state['monthly_type'] = self::inferMonthlyTypeFromState($state);
         }
 
-        if (! filled($state['timezone'] ?? null)) {
+        if (! array_key_exists('timezone', $state)) {
             $state['timezone'] = config('filament-recurrence.timezone', 'UTC');
         }
 
@@ -259,22 +260,22 @@ class RecurrenceData implements Arrayable
         }
 
         $parts = [];
-        
+
         // Frequency
         $parts[] = 'FREQ=' . strtoupper($this->frequency);
-        
+
         // Interval
         if ($this->interval && $this->interval > 1) {
             $parts[] = 'INTERVAL=' . $this->interval;
         }
-        
+
         // End condition
         if ($this->count) {
             $parts[] = 'COUNT=' . $this->count;
         } elseif ($this->endDate) {
             $parts[] = 'UNTIL=' . $this->endDate->format('Ymd\THis\Z');
         }
-        
+
         $freq = strtoupper((string) $this->frequency);
 
         // MONTHLY: never combine BYMONTHDAY with BYDAY+BYSETPOS (stale UI state causes invalid rules and Recurr can hang).
@@ -321,7 +322,7 @@ class RecurrenceData implements Arrayable
                 $parts[] = 'BYSETPOS=' . $this->bySetPos;
             }
         }
-        
+
         return implode(';', $parts);
     }
 
